@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filler — визуализатор поля</title>
+<style>
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10151d; color: #edf2f7; }
+body { margin: 0; padding: 28px; }
+main { max-width: 1100px; margin: auto; }
+h1 { margin: 0 0 8px; font-size: 1.7rem; }
+p { color: #aab6c5; margin: 0 0 18px; }
+textarea { box-sizing: border-box; width: 100%; min-height: 260px; padding: 14px; border: 1px solid #384556; border-radius: 10px; background: #171f2a; color: #edf2f7; font: 14px/1.45 ui-monospace, monospace; resize: vertical; }
+button { margin: 12px 0 20px; border: 0; border-radius: 8px; padding: 10px 16px; background: #56b8a9; color: #071b18; font-weight: 700; cursor: pointer; }
+button:hover { background: #78d2c3; }
+#status { min-height: 1.5em; color: #aab6c5; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 22px; align-items: start; }
+.panel { padding: 16px; border: 1px solid #303d4c; border-radius: 12px; background: #151c26; overflow: auto; }
+.panel h2 { margin: 0 0 12px; font-size: 1.05rem; }
+#board, #piece { display: grid; width: max-content; gap: 2px; }
+.cell { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 4px; background: #26313e; color: #8291a3; font: 11px ui-monospace, monospace; }
+.cell.p1 { background: #147eaa; color: white; }
+.cell.p2 { background: #d27a37; color: #1b1007; }
+.cell.last { outline: 2px solid #f5e66b; outline-offset: -2px; }
+.cell.blocked { background: #51596a; color: #fff; }
+#piece .cell.filled { background: #56b8a9; }
+.legend { display: grid; gap: 9px; margin-top: 16px; color: #b9c3ce; font-size: .9rem; }
+.key { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 7px; border-radius: 4px; font: 11px ui-monospace, monospace; }
+.key.p1 { background: #147eaa; }.key.p2 { background: #d27a37; color: #1b1007; }.key.last { border: 2px solid #f5e66b; }.key.blocked { background: #51596a; }
+@media (max-width: 750px) { body { padding: 16px; }.layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Filler — визуализатор</h1>
+<p>Вставьте полный вывод одного хода game_engine, чтобы увидеть Anfield и текущую фигуру.</p>
+<textarea id="source" spellcheck="false">$$$ exec p1 : [robots/bender]
+Anfield 8 5:
+    01234567
+000 ........
+001 ........
+002 ..@.....
+003 ........
+004 ......$.
+Piece 4 2:
+.OO.
+..O.</textarea>
+<button id="render">Показать поле</button>
+<div id="status" role="status"></div>
+<div class="layout">
+<section class="panel"><h2>Поле</h2><div id="board" aria-label="Игровое поле"></div><div class="legend">
+<div><span class="key p1">@</span>Игрок 1 (последний ход — жёлтая рамка)</div>
+<div><span class="key p2">$</span>Игрок 2 (последний ход — жёлтая рамка)</div>
+<div><span class="key blocked">#</span>Другая занятая клетка</div>
+</div></section>
+<section class="panel"><h2>Новая фигура</h2><div id="piece" aria-label="Новая фигура"></div></section>
+</div>
+</main>
+<script>
+const source = document.querySelector('#source');
+const statusLine = document.querySelector('#status');
+function parse(text) {
+  const lines = text.replaceAll('\r', '').split('\n');
+  const boardAt = lines.findIndex(line => /^\s*(Anfield|Plateau)\s+\d+\s+\d+\s*:?/.test(line));
+  const pieceAt = lines.findIndex(line => /^\s*Piece\s+\d+\s+\d+\s*:?/.test(line));
+  if (boardAt < 0 || pieceAt < 0 || pieceAt <= boardAt) throw new Error('Не найдены заголовки Anfield и Piece.');
+  const [, widthText, heightText] = lines[boardAt].trim().match(/^(?:Anfield|Plateau)\s+(\d+)\s+(\d+)/);
+  const width = Number(widthText), height = Number(heightText);
+  const board = [];
+  for (const line of lines.slice(boardAt + 1, pieceAt)) {
+    const match = line.match(/^\s*\d+\s+(.+?)\s*$/);
+    if (match) board.push([...match[1]]);
+  }
+  if (board.length !== height || board.some(row => row.length !== width)) throw new Error(`Ожидалось строк поля: ${height}, ширина: ${width}.`);
+  const [, pieceWidthText, pieceHeightText] = lines[pieceAt].trim().match(/^Piece\s+(\d+)\s+(\d+)/);
+  const pieceWidth = Number(pieceWidthText), pieceHeight = Number(pieceHeightText);
+  const piece = lines.slice(pieceAt + 1).filter(line => line.trim().length).slice(0, pieceHeight).map(line => [...line.trim()]);
+  if (piece.length !== pieceHeight || piece.some(row => row.length !== pieceWidth)) throw new Error('Размеры фигуры не совпадают с её содержимым.');
+  return { board, piece, width, height, pieceWidth, pieceHeight };
+}
+function drawGrid(target, rows, width, cellClass) {
+  target.replaceChildren();
+  target.style.gridTemplateColumns = `repeat(${width}, 22px)`;
+  for (const row of rows) for (const value of row) {
+    const cell = document.createElement('span');
+    cell.className = cellClass(value);
+    cell.textContent = value === '.' ? '' : value;
+    target.append(cell);
+  }
+}
+function render() {
+  try {
+    const game = parse(source.value);
+    drawGrid(document.querySelector('#board'), game.board, game.width, value => {
+      if (value === '@' || value === 'a') return `cell p1${value === 'a' ? ' last' : ''}`;
+      if (value === '$' || value === 's') return `cell p2${value === 's' ? ' last' : ''}`;
+      return value === '.' ? 'cell' : 'cell blocked';
+    });
+    drawGrid(document.querySelector('#piece'), game.piece, game.pieceWidth, value => value === '.' ? 'cell' : 'cell filled');
+    statusLine.textContent = `Поле ${game.width} × ${game.height}; фигура ${game.pieceWidth} × ${game.pieceHeight}.`;
+  } catch (error) {
+    statusLine.textContent = error.message;
+    document.querySelector('#board').replaceChildren();
+    document.querySelector('#piece').replaceChildren();
+  }
+}
+document.querySelector('#render').addEventListener('click', render);
+render();
+</script>
+</body>
+</html>
