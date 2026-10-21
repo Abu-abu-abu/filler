@@ -233,18 +233,19 @@ pub fn is_legal_placement(state: &GameState, x: usize, y: usize) -> bool {
     let board_height = state.height();
     let board_width = state.width();
     let piece_height = state.piece.len();
-    let Some(piece_width) = state.piece.first().map(Vec::len) else {
-        return false;
+    let piece_width = match state.piece.first().map(Vec::len) {
+        Some(width) => width,
+        None => return false,
     };
     if piece_width == 0 || state.piece.iter().any(|row| row.len() != piece_width) {
         return false;
     }
     let fits_vertically = y
         .checked_add(piece_height)
-        .is_some_and(|end| end <= board_height);
+        .map_or(false, |end| end <= board_height);
     let fits_horizontally = x
         .checked_add(piece_width)
-        .is_some_and(|end| end <= board_width);
+        .map_or(false, |end| end <= board_width);
     if !fits_vertically || !fits_horizontally {
         return false;
     }
@@ -314,7 +315,12 @@ fn opponent_distances(state: &GameState) -> Option<Vec<Vec<u32>>> {
     Some(dist)
 }
 
-fn placement_score(state: &GameState, distances: Option<&Vec<Vec<u32>>>, x: usize, y: usize) -> f64 {
+fn placement_score(
+    state: &GameState,
+    distances: Option<&Vec<Vec<u32>>>,
+    x: usize,
+    y: usize,
+) -> f64 {
     let width = state.width();
     let height = state.height();
     let own = state.player.own_markers();
@@ -523,8 +529,7 @@ mod tests {
 
     #[test]
     fn prefers_moves_toward_the_opponent() {
-        let input =
-            "$$$ exec p1 : [bot]\nAnfield 9 1:\n000 ..@.....$\nPiece 2 1:\nOO\n";
+        let input = "$$$ exec p1 : [bot]\nAnfield 9 1:\n000 ..@.....$\nPiece 2 1:\nOO\n";
         let state = parse_input(input).unwrap();
         // Right of the own cell moves toward the opponent; left moves away.
         assert_eq!(choose_placement(&state), Some((2, 0)));

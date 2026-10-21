@@ -1,0 +1,15 @@
+FROM rust:1.63-buster
+
+COPY ./maps			        /filler/maps
+COPY ./linux_robots		    /filler/linux_robots
+COPY ./m1_robots		    /filler/m1_robots
+COPY ./linux_game_engine	/filler/linux_game_engine
+COPY ./m1_game_engine	    /filler/m1_game_engine
+COPY ./run-matches.sh	    /filler/run-matches.sh
+
+WORKDIR /filler/
+
+RUN chmod +x /filler/linux_game_engine /filler/m1_game_engine \
+    /filler/linux_robots/* /filler/m1_robots/* /filler/run-matches.sh
+
+ENTRYPOINT ["/bin/bash"]
